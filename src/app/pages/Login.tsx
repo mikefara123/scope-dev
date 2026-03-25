@@ -1,258 +1,314 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router';
-import { Eye, EyeOff } from 'lucide-react';
-import { Button } from '@/app/components/ui/button';
-import { Input } from '@/app/components/ui/input';
-import { Label } from '@/app/components/ui/label';
-import { Checkbox } from '@/app/components/ui/checkbox';
-import { useAuth } from '@/contexts/AuthContext';
+import { useState } from "react";
+import { useNavigate, Link } from "react-router";
+import { useAuth } from "@/contexts/AuthContext";
+import { requestPasswordReset } from "@/lib/auth";
+import { users } from "@/data/mock";
+import { UserRole } from "@/types";
+import { cn } from "@/lib/utils";
+import { AuthLayout } from "@/app/components/auth/AuthLayout";
+import { SocialButtons } from "@/app/components/auth/SocialButtons";
+import { PasswordInput } from "@/app/components/auth/PasswordInput";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Loader2,
+  ChevronRight,
+} from "lucide-react";
+
+type View = "login" | "forgot" | "forgot-sent";
+
+const roleLabels: Record<UserRole, string> = {
+  [UserRole.PLATFORM_ADMIN]: "Platform Admin",
+  [UserRole.AGENCY_ADMIN]: "Agency Admin",
+  [UserRole.GENERAL_USER]: "Designer",
+  [UserRole.READ_ONLY_USER]: "Read Only",
+};
+
+const roleColors: Record<UserRole, string> = {
+  [UserRole.PLATFORM_ADMIN]: "bg-red-500/10 text-red-400 border border-red-500/20",
+  [UserRole.AGENCY_ADMIN]: "bg-violet-500/10 text-violet-400 border border-violet-500/20",
+  [UserRole.GENERAL_USER]: "bg-teal-500/10 text-teal-400 border border-teal-500/20",
+  [UserRole.READ_ONLY_USER]: "bg-slate-500/10 text-slate-400 border border-slate-500/20",
+};
 
 export function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
-  const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const { login, socialLogin, getRedirect } = useAuth();
+
+  const [view, setView] = useState<View>("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(false);
+  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setIsLoading(true);
-    
     try {
-      await login(email, password);
-      navigate('/');
-    } catch (err) {
-      setError('Invalid email or password');
+      const res = await login(email, password, remember);
+      if (res.success && res.user) {
+        navigate(getRedirect());
+      } else {
+        setError(res.error || "Something went wrong.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSocial = async (provider: "google" | "apple") => {
+    setError("");
+    setIsLoading(true);
+    try {
+      const res = await socialLogin(provider);
+      if (res.success) navigate(getRedirect());
+      else setError(res.error || "Social login failed.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleQuickLogin = async (userEmail: string) => {
+    setError("");
+    setIsLoading(true);
+    try {
+      const res = await login(userEmail, "", true);
+      if (res.success) navigate(getRedirect());
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    try {
+      await requestPasswordReset(resetEmail);
+      setView("forgot-sent");
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex bg-background">
-      {/* Left Side - Branding */}
-      <div
-        className="hidden lg:flex lg:w-1/2 items-center justify-center p-12"
-        style={{
-          background: 'linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-secondary) 100%)'
-        }}
-      >
-        <div className="text-center">
+    <AuthLayout>
+      {/* ---- LOGIN VIEW ---- */}
+      {view === "login" && (
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
           <div className="mb-8">
-            <div className="text-5xl font-bold mb-4 text-white">
-              Design SaaS
-            </div>
-            <p className="text-xl text-white/90">
-              Budget Management for Interior Designers
-            </p>
-          </div>
-          
-          <div className="mt-12 space-y-4 text-white/80">
-            <div className="flex items-center justify-center gap-3">
-              <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
-                ✓
-              </div>
-              <p>Professional budget proposals</p>
-            </div>
-            <div className="flex items-center justify-center gap-3">
-              <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
-                ✓
-              </div>
-              <p>Client approval workflows</p>
-            </div>
-            <div className="flex items-center justify-center gap-3">
-              <div className="h-12 w-12 rounded-full bg-white/20 flex items-center justify-center">
-                ✓
-              </div>
-              <p>Real-time cost tracking</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Right Side - Login Form */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-background">
-        <div className="w-full max-w-md">
-          {/* Mobile Logo */}
-          <div className="lg:hidden text-center mb-8">
-            <h1 className="text-3xl font-bold mb-2 text-primary">
-              Design SaaS
-            </h1>
-            <p className="text-muted-foreground">
-              Budget Management for Interior Designers
+            <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+              Welcome back
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Sign in to your account to continue
             </p>
           </div>
 
-          {/* Login Card */}
-          <div className="bg-card rounded-lg border border-border p-8 shadow-lg">
-            <div className="mb-8">
-              <h2 className="text-2xl font-semibold mb-2">Welcome back</h2>
-              <p className="text-muted-foreground">
-                Sign in to your account to continue
-              </p>
-            </div>
+          <SocialButtons
+            onGoogle={() => handleSocial("google")}
+            disabled={isLoading}
+          />
 
+          {/* Divider */}
+          <div className="my-6 flex items-center gap-4">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs font-medium text-muted-foreground">or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleLogin} className="space-y-4">
             {error && (
-              <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+              <div className="animate-in fade-in slide-in-from-top-1 rounded-xl border border-error/20 bg-error-light p-3 text-sm text-error-dark">
                 {error}
               </div>
             )}
 
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="designer@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="mt-1"
-                />
-              </div>
+            <div>
+              <label htmlFor="email" className="mb-1.5 block text-[13px] font-medium text-foreground">
+                Email address
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                autoComplete="email"
+                required
+                className="h-12 w-full rounded-xl border border-border bg-white px-4 text-sm text-foreground shadow-xs outline-none transition-all placeholder:text-muted-foreground/50 focus:border-secondary focus:ring-2 focus:ring-secondary/20"
+              />
+            </div>
 
-              <div>
-                <Label htmlFor="password">Password</Label>
-                <div className="relative mt-1">
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Checkbox id="remember" />
-                  <Label htmlFor="remember" className="text-sm cursor-pointer">
-                    Remember me
-                  </Label>
-                </div>
+            <div>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label htmlFor="password" className="text-[13px] font-medium text-foreground">
+                  Password
+                </label>
                 <button
                   type="button"
-                  className="text-sm hover:underline text-secondary"
+                  onClick={() => { setResetEmail(email); setView("forgot"); }}
+                  className="text-[13px] font-medium text-secondary hover:text-secondary/80 transition-colors"
                 >
                   Forgot password?
                 </button>
               </div>
-
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isLoading}
-              >
-                {isLoading ? 'Signing in...' : 'Sign In'}
-              </Button>
-            </form>
-
-            {/* Demo Credentials */}
-            <div className="mt-6 p-4 rounded-lg bg-muted/50 border border-border">
-              <p className="text-sm font-semibold mb-2">Demo Credentials:</p>
-              <div className="text-xs space-y-1 text-muted-foreground">
-                <p><strong>Platform Admin:</strong> admin@projectclarity.com</p>
-                <p><strong>Agency Admin:</strong> admin@luxeinteriors.com</p>
-                <p><strong>Designer:</strong> emily@luxeinteriors.com</p>
-                <p><strong>Read-Only:</strong> robert@luxeinteriors.com</p>
-                <p className="mt-2 italic">Password: any</p>
-              </div>
+              <PasswordInput
+                id="password"
+                value={password}
+                onChange={setPassword}
+                label=""
+              />
             </div>
 
-            {/* Client Approval Portal Link */}
-            <div className="mt-4 p-4 rounded-lg bg-secondary/10 border border-secondary/20">
-              <p className="text-sm font-semibold mb-2 text-secondary">Client Approval Portal:</p>
-              <p className="text-xs text-muted-foreground mb-2">
-                Access budget approvals with your secure link
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="w-full text-xs border-secondary text-secondary hover:bg-secondary/10"
-                onClick={() => navigate('/client-approval/demo-token')}
-              >
-                View Demo Client Dashboard
-              </Button>
-            </div>
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(e) => setRemember(e.target.checked)}
+                className="h-4 w-4 rounded border-border text-secondary accent-secondary focus:ring-secondary/20"
+              />
+              <span className="text-sm text-muted-foreground">Remember me</span>
+            </label>
 
-            <div className="mt-6">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-border"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-card text-muted-foreground">or</span>
-                </div>
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full mt-4"
-              >
-                <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24">
-                  <path
-                    fill="currentColor"
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                  />
-                  <path
-                    fill="currentColor"
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                  />
-                </svg>
-                Sign in with Google
-              </Button>
-            </div>
-          </div>
-
-          <p className="text-center text-sm text-muted-foreground mt-6">
-            Don't have an account?{' '}
             <button
-              type="button"
-              className="hover:underline text-secondary"
+              type="submit"
+              disabled={isLoading}
+              className="flex h-12 w-full items-center justify-center rounded-xl bg-primary text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99] disabled:opacity-60"
             >
-              Contact sales
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign in"}
             </button>
+          </form>
+
+          {/* Sign up link */}
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            Don't have an account?{" "}
+            <Link to="/signup" className="font-medium text-secondary hover:text-secondary/80 transition-colors">
+              Create one
+            </Link>
           </p>
 
-          <div className="text-center mt-4">
-            <button
-              type="button"
-              onClick={() => navigate('/documentation')}
-              className="text-sm hover:underline text-primary"
-            >
-              📖 Learn more about Design SaaS
-            </button>
+          {/* Demo Quick Login */}
+          <div className="mt-8">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                Demo Accounts
+              </span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+            <div className="space-y-1.5">
+              {users.slice(0, 6).map((u) => (
+                <button
+                  key={u.id}
+                  onClick={() => handleQuickLogin(u.email)}
+                  disabled={isLoading}
+                  className="group flex w-full items-center justify-between rounded-xl border border-transparent bg-white/60 px-4 py-2.5 text-left transition-all hover:border-border hover:bg-white hover:shadow-xs disabled:opacity-60"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200 text-[11px] font-semibold text-slate-600">
+                      {u.name.split(" ").map((n) => n[0]).join("")}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{u.name}</p>
+                      <p className="truncate text-xs text-muted-foreground/70">{u.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", roleColors[u.role])}>
+                      {roleLabels[u.role]}
+                    </span>
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5" />
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      )}
+
+      {/* ---- FORGOT PASSWORD VIEW ---- */}
+      {view === "forgot" && (
+        <div className="animate-in fade-in slide-in-from-right-2 duration-400">
+          <button
+            onClick={() => setView("login")}
+            className="mb-6 flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to sign in
+          </button>
+
+          <div className="mb-8">
+            <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+              Reset your password
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Enter your email and we'll send you a link to reset your password.
+            </p>
+          </div>
+
+          <form onSubmit={handleForgotPassword} className="space-y-4">
+            <div>
+              <label htmlFor="reset-email" className="mb-1.5 block text-[13px] font-medium text-foreground">
+                Email address
+              </label>
+              <input
+                id="reset-email"
+                type="email"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                placeholder="you@company.com"
+                autoComplete="email"
+                required
+                autoFocus
+                className="h-12 w-full rounded-xl border border-border bg-white px-4 text-sm text-foreground shadow-xs outline-none transition-all placeholder:text-muted-foreground/50 focus:border-secondary focus:ring-2 focus:ring-secondary/20"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="flex h-12 w-full items-center justify-center rounded-xl bg-primary text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99] disabled:opacity-60"
+            >
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send reset link"}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* ---- FORGOT PASSWORD SENT VIEW ---- */}
+      {view === "forgot-sent" && (
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 text-center">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-success-light">
+            <CheckCircle2 className="h-8 w-8 text-success" />
+          </div>
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground">
+            Check your email
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            We've sent a password reset link to{" "}
+            <span className="font-medium text-foreground">{resetEmail}</span>.
+            <br />
+            It may take a minute to arrive.
+          </p>
+          <button
+            onClick={() => { setView("login"); setResetEmail(""); }}
+            className="mt-8 flex h-12 w-full items-center justify-center rounded-xl bg-primary text-sm font-medium text-primary-foreground shadow-sm transition-all hover:bg-primary/90 active:scale-[0.99]"
+          >
+            Back to sign in
+          </button>
+
+          {/* Demo shortcut */}
+          <Link
+            to="/reset-password?token=demo-reset-token"
+            className="mt-3 flex h-10 w-full items-center justify-center rounded-xl border border-border text-xs font-medium text-muted-foreground transition-all hover:bg-white hover:shadow-xs"
+          >
+            Demo: Open reset link
+          </Link>
+        </div>
+      )}
+    </AuthLayout>
   );
 }

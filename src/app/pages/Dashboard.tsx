@@ -1,398 +1,221 @@
-import { Link } from 'react-router';
-import { 
-  FolderOpen, 
-  Clock, 
-  DollarSign, 
-  Send, 
-  Plus, 
-  ArrowRight, 
-  TrendingUp, 
-  TrendingDown,
-  Calendar,
+import { useAuth } from "@/contexts/AuthContext";
+import { projects, budgets, activities } from "@/data/mock";
+import { UserRole } from "@/types";
+import {
+  FolderKanban,
+  DollarSign,
+  Clock,
   CheckCircle2,
-  AlertCircle,
-  Users,
-  BarChart3,
-  Eye,
-  FileText,
+  TrendingUp,
   ArrowUpRight,
-  Receipt
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/app/components/ui/card';
-import { Badge } from '@/app/components/ui/badge';
-import { Button } from '@/app/components/ui/button';
-import { mockProjects, mockActivities } from '@/app/data/mockData';
-import { formatDistanceToNow } from 'date-fns';
-import { useAuth } from '@/contexts/AuthContext';
-import { UserRole } from '@/types/multi-tenant';
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { MetricCard } from '@/app/components/common';
+} from "lucide-react";
 
-export function Dashboard() {
-  const { user, agency } = useAuth();
-  
-  const activeProjects = mockProjects.filter(p => p.status === 'Active').length;
-  const pendingApprovals = mockProjects.reduce((acc, p) => acc + (p.pendingAmount > 0 ? 1 : 0), 0);
-  const totalBudgetValue = mockProjects.reduce((acc, p) => acc + p.totalBudgeted, 0);
-  const budgetsSentThisMonth = 3;
-  const completedProjects = mockProjects.filter(p => p.status === 'Completed').length;
-
-  const recentActivities = mockActivities.slice(0, 5);
-
-  // Mock data for charts
-  const monthlyBudgetData = [
-    { month: 'Jan', value: 145000, budgets: 4 },
-    { month: 'Feb', value: 198000, budgets: 6 },
-    { month: 'Mar', value: 167000, budgets: 5 },
-    { month: 'Apr', value: 223000, budgets: 7 },
-    { month: 'May', value: 289000, budgets: 9 },
-    { month: 'Jun', value: 312000, budgets: 8 },
-  ];
-
-  const projectStatusData = [
-    { name: 'Active', value: activeProjects, color: '#319795' },
-    { name: 'Pending Approval', value: pendingApprovals, color: '#F59E0B' },
-    { name: 'Completed', value: completedProjects, color: '#10B981' },
-    { name: 'On Hold', value: 2, color: '#94A3B8' },
-  ];
-
-  const budgetBreakdownData = [
-    { category: 'Furniture', value: 125000, color: '#1a365d' },
-    { category: 'Lighting', value: 45000, color: '#319795' },
-    { category: 'Fixtures', value: 67000, color: '#2d4a7c' },
-    { category: 'Decor', value: 38000, color: '#4a9e9c' },
-    { category: 'Other', value: 23000, color: '#94A3B8' },
-  ];
-
-  const upcomingDeadlines = [
-    { id: 1, project: 'Riverside Penthouse', task: 'Budget v2.0 Review', dueDate: '2 days', priority: 'high' },
-    { id: 2, project: 'Downtown Loft', task: 'Client Presentation', dueDate: '4 days', priority: 'medium' },
-    { id: 3, project: 'Suburban Villa', task: 'Final Approval', dueDate: '1 week', priority: 'low' },
-  ];
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  trend,
+  color = "primary",
+}: {
+  label: string;
+  value: string | number;
+  icon: React.ElementType;
+  trend?: string;
+  color?: "primary" | "secondary" | "success" | "warning";
+}) {
+  const colorMap = {
+    primary: "bg-primary/10 text-primary",
+    secondary: "bg-secondary/10 text-secondary",
+    success: "bg-success-light text-success-dark",
+    warning: "bg-warning-light text-warning-dark",
+  };
 
   return (
-    <div className="p-8 space-y-8 max-w-[1600px] mx-auto bg-background min-h-screen">
-      {/* Header with Welcome Message */}
-      <div className="flex items-center justify-between">
+    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-foreground tracking-tight">
-            Welcome back, {user?.name.split(' ')[0]}! 👋
-          </h1>
-          <p className="text-muted-foreground mt-2 text-lg">
-            Here's what's happening with your projects today
-          </p>
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{value}</p>
+          {trend && (
+            <p className="mt-1 flex items-center gap-1 text-xs text-success">
+              <TrendingUp className="h-3 w-3" />
+              {trend}
+            </p>
+          )}
         </div>
-        <div className="flex gap-3">
-          <Link to="/budgets">
-            <Button variant="outline" size="lg" className="gap-2 shadow-lg">
-              <Receipt className="h-5 w-5" />
-              Go to My Budgets
-            </Button>
-          </Link>
-          <Link to="/projects">
-            <Button variant="secondary" size="lg" className="gap-2 shadow-lg">
-              <FolderOpen className="h-5 w-5" />
-              Go to My Projects
-            </Button>
-          </Link>
+        <div className={`rounded-lg p-2.5 ${colorMap[color]}`}>
+          <Icon className="h-5 w-5" />
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Key Metrics - Enhanced with trends */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <MetricCard
+function ActivityItem({ action, userName, target, details, timestamp }: {
+  action: string;
+  userName: string;
+  target: string;
+  details?: string;
+  timestamp: string;
+}) {
+  const time = new Date(timestamp);
+  const relative = getRelativeTime(time);
+
+  return (
+    <div className="flex items-start gap-3 py-3">
+      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
+        {userName.split(" ").map((n) => n[0]).join("")}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-foreground">
+          <span className="font-medium">{userName}</span>{" "}
+          <span className="text-muted-foreground">{action}</span>{" "}
+          <span className="font-medium">{target}</span>
+        </p>
+        {details && (
+          <p className="text-xs text-muted-foreground">{details}</p>
+        )}
+      </div>
+      <span className="shrink-0 text-xs text-muted-foreground">{relative}</span>
+    </div>
+  );
+}
+
+function getRelativeTime(date: Date) {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+export function Dashboard() {
+  const { user, agency, isPlatformAdmin } = useAuth();
+
+  if (!user) return null;
+
+  // Filter data by agency for non-platform users
+  const agencyProjects = isPlatformAdmin()
+    ? projects
+    : projects.filter((p) => p.agency_id === user.agency_id);
+
+  const agencyBudgets = isPlatformAdmin()
+    ? budgets
+    : budgets.filter((b) =>
+        agencyProjects.some((p) => p.id === b.projectId)
+      );
+
+  const activeProjects = agencyProjects.filter((p) => p.status === "active").length;
+  const pendingApprovals = agencyBudgets.filter((b) => b.status === "pending_approval").length;
+  const totalBudgetValue = agencyProjects.reduce((sum, p) => sum + p.totalBudgeted, 0);
+  const approvedValue = agencyProjects.reduce((sum, p) => sum + p.approvedAmount, 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Welcome */}
+      <div>
+        <h1>
+          Welcome back, {user.name.split(" ")[0]}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {agency ? agency.name : "Platform overview"} — Here's what's happening today.
+        </p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
           label="Active Projects"
           value={activeProjects}
-          icon={FolderOpen}
-          iconBgColor="secondary"
-          borderColor="secondary"
-          badge={{
-            label: '+12%',
-            variant: 'success',
-            icon: TrendingUp,
-          }}
-          description="2 new this week"
+          icon={FolderKanban}
+          trend="+2 this month"
+          color="primary"
         />
-
-        <MetricCard
+        <StatCard
           label="Pending Approvals"
           value={pendingApprovals}
           icon={Clock}
-          iconBgColor="warning"
-          borderColor="warning"
-          badge={{
-            label: 'Action needed',
-            variant: 'warning',
-          }}
-          description={`$${(mockProjects.reduce((acc, p) => acc + p.pendingAmount, 0) / 1000).toFixed(0)}k in value`}
+          color="warning"
         />
-
-        <MetricCard
+        <StatCard
           label="Total Budget Value"
           value={`$${(totalBudgetValue / 1000).toFixed(0)}k`}
           icon={DollarSign}
-          iconBgColor="success"
-          borderColor="success"
-          badge={{
-            label: '+8%',
-            variant: 'success',
-            icon: TrendingUp,
-          }}
-          description={`Across ${mockProjects.length} projects`}
+          trend="+12% vs last month"
+          color="secondary"
         />
-
-        <MetricCard
-          label="Budgets Sent"
-          value={budgetsSentThisMonth}
-          icon={Send}
-          iconBgColor="primary"
-          borderColor="primary"
-          badge={{
-            label: 'This month',
-            variant: 'info',
-          }}
-          description="2 awaiting response"
+        <StatCard
+          label="Approved Value"
+          value={`$${(approvedValue / 1000).toFixed(0)}k`}
+          icon={CheckCircle2}
+          color="success"
         />
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Budget Trend Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Budget Trend</CardTitle>
-            <CardDescription>Monthly budget creation over the last 6 months</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={monthlyBudgetData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis dataKey="month" stroke="#6b7280" />
-                <YAxis stroke="#6b7280" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'white', 
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px'
-                  }}
-                  formatter={(value: number) => `$${(value / 1000).toFixed(0)}K`}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="#319795" 
-                  strokeWidth={3}
-                  dot={{ fill: '#319795', r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Project Status Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Project Status</CardTitle>
-            <CardDescription>Distribution of projects by status</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={projectStatusData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {projectStatusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Budget Breakdown Chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Budget Breakdown by Category</CardTitle>
-          <CardDescription>Total budget allocation across all active projects</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={budgetBreakdownData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="category" stroke="#6b7280" />
-              <YAxis stroke="#6b7280" />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: 'white', 
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px'
-                }}
-                formatter={(value: number) => `$${(value / 1000).toFixed(0)}K`}
-              />
-              <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-                {budgetBreakdownData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Activity - Enhanced */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Recent Activity</CardTitle>
-                <CardDescription>Latest updates from your projects</CardDescription>
-              </div>
-              <Button variant="ghost" size="sm">
-                <Eye className="h-4 w-4 mr-2" />
-                View All
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentActivities.map((activity) => (
-                <div key={activity.id} className="flex items-start gap-4 pb-4 border-b last:border-0 last:pb-0 hover:bg-muted/30 p-3 rounded-lg transition-colors">
-                  <div 
-                    className="h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ 
-                      backgroundColor: activity.type === 'budget_approved' 
-                        ? 'rgba(16, 185, 129, 0.1)' 
-                        : 'rgba(49, 151, 149, 0.1)' 
-                    }}
-                  >
-                    {activity.type === 'budget_approved' ? (
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
-                    ) : (
-                      <FileText className="h-5 w-5 text-[#319795]" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">{activity.message}</p>
-                    <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {formatDistanceToNow(activity.timestamp, { addSuffix: true })}
-                    </p>
-                  </div>
-                  <Button variant="ghost" size="sm">
-                    <ArrowUpRight className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Upcoming Deadlines */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Upcoming Deadlines</CardTitle>
-            <CardDescription>Tasks requiring attention</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {upcomingDeadlines.map((item) => (
-                <div key={item.id} className="p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-foreground">{item.task}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{item.project}</p>
-                    </div>
-                    <Badge 
-                      variant="outline"
-                      className={
-                        item.priority === 'high' 
-                          ? 'bg-red-50 text-red-700 border-red-200' 
-                          : item.priority === 'medium'
-                          ? 'bg-amber-50 text-amber-700 border-amber-200'
-                          : 'bg-blue-50 text-blue-700 border-blue-200'
-                      }
-                    >
-                      {item.priority}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Calendar className="h-3 w-3" />
-                    Due in {item.dueDate}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <Button variant="outline" className="w-full mt-4" size="sm">
-              <Calendar className="h-4 w-4 mr-2" />
-              View Calendar
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Projects Needing Attention - Enhanced */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Projects Needing Attention</CardTitle>
-              <CardDescription>Budgets pending client approval</CardDescription>
-            </div>
-            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
-              {pendingApprovals} pending
-            </Badge>
+      {/* Content Grid */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Recent Activity */}
+        <div className="lg:col-span-2 rounded-xl border border-border bg-card p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h2>Recent Activity</h2>
+            <button className="flex items-center gap-1 text-xs font-medium text-secondary hover:underline">
+              View All <ArrowUpRight className="h-3 w-3" />
+            </button>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {mockProjects.filter(p => p.pendingAmount > 0).map((project) => (
-              <Link 
-                key={project.id}
-                to={`/projects/${project.id}`}
-                className="flex items-center justify-between p-4 rounded-lg border border-border hover:border-[#319795] hover:bg-muted/30 transition-all group"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-lg bg-[#319795]/10 flex items-center justify-center">
-                    <FolderOpen className="h-6 w-6 text-[#319795]" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground group-hover:text-[#319795] transition-colors">{project.clientName}</p>
-                    <p className="text-sm text-muted-foreground">{project.address}</p>
-                  </div>
-                </div>
-                <div className="text-right flex items-center gap-4">
-                  <div>
-                    <Badge
-                      style={{ 
-                        backgroundColor: 'var(--warning)', 
-                        color: 'white' 
-                      }}
-                    >
-                      Pending Approval
-                    </Badge>
-                    <p className="text-sm font-semibold text-foreground mt-1">
-                      ${(project.pendingAmount / 1000).toFixed(0)}K pending
-                    </p>
-                  </div>
-                  <ArrowUpRight className="h-5 w-5 text-muted-foreground group-hover:text-[#319795] transition-colors" />
-                </div>
-              </Link>
+          <div className="divide-y divide-border">
+            {activities.slice(0, 5).map((activity) => (
+              <ActivityItem
+                key={activity.id}
+                action={activity.action}
+                userName={activity.userName}
+                target={activity.target}
+                details={activity.details}
+                timestamp={activity.timestamp}
+              />
             ))}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Quick Actions / Project Summary */}
+        <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+          <h2 className="mb-4">Projects</h2>
+          <div className="space-y-3">
+            {agencyProjects.slice(0, 4).map((project) => (
+              <div
+                key={project.id}
+                className="flex items-center justify-between rounded-lg border border-border p-3"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {project.projectName}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {project.clientName}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    project.status === "active"
+                      ? "bg-success-light text-success-dark"
+                      : project.status === "on_hold"
+                      ? "bg-warning-light text-warning-dark"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {project.status === "active"
+                    ? "Active"
+                    : project.status === "on_hold"
+                    ? "On Hold"
+                    : "Completed"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

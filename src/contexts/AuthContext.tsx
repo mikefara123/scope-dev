@@ -1,255 +1,200 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import type { User, Agency } from '@/types/multi-tenant';
-import { Permission, hasPermission, canAccessProject, canEditProject, canAccessBudget, canEditBudget, isAdmin, isPlatformAdmin } from '@/lib/permissions';
-import { mockUsers, mockCurrentUser, getAgencyById } from '@/data/mock-multi-tenant';
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  type ReactNode,
+} from "react";
+import { type User, type Agency, type Permission, type SubscriptionTier, UserRole, rolePermissions } from "@/types";
+import { agencies } from "@/data/mock";
+import {
+  getCurrentUser,
+  loginWithEmail,
+  loginWithSocial,
+  signupWithEmail,
+  signupWithSocial,
+  acceptInvitation,
+  logout as apiLogout,
+  getRedirectPath,
+  type AuthResponse,
+  type SignupResponse,
+  type InviteAcceptResponse,
+} from "@/lib/auth";
 
-interface AuthContextType {
+interface AuthState {
   user: User | null;
   agency: Agency | null;
   isLoading: boolean;
-  
-  // Convenience properties
-  userRole: string | null;
-  currentUser: User | null;
-  
-  // Authentication actions
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-  
-  // Permission checks
+  login: (email: string, password: string, remember?: boolean) => Promise<AuthResponse>;
+  socialLogin: (provider: "google" | "apple") => Promise<AuthResponse>;
+  signup: (data: {
+    name: string;
+    email: string;
+    password: string;
+    agency_name: string;
+    agency_type: "individual" | "company";
+    team_size: string;
+    subscription_tier: SubscriptionTier;
+  }) => Promise<SignupResponse>;
+  socialSignup: (provider: "google" | "apple") => Promise<SignupResponse>;
+  acceptInvite: (data: { token: string; name: string; password: string }) => Promise<InviteAcceptResponse>;
+  logout: () => Promise<void>;
   hasPermission: (permission: Permission) => boolean;
-  canAccessProject: (project: { agency_id: string; collaborators?: string[] }) => boolean;
-  canEditProject: (project: { agency_id: string; collaborators?: string[] }) => boolean;
-  canAccessBudget: (budget: { agency_id: string; collaborators?: string[] }) => boolean;
-  canEditBudget: (budget: { agency_id: string; collaborators?: string[] }) => boolean;
-  
-  // Role checks
-  isAdmin: () => boolean;
   isPlatformAdmin: () => boolean;
+  isAdmin: () => boolean;
+  getRedirect: () => string;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [agency, setAgency] = useState<Agency | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load current user on mount
-  useEffect(() => {
-    loadCurrentUser();
+  const applyAgencyTheme = useCallback((userAgency: Agency | null) => {
+    if (userAgency) {
+      const root = document.documentElement;
+      root.style.setProperty("--brand-primary", userAgency.theme_colors.primary);
+      root.style.setProperty("--brand-secondary", userAgency.theme_colors.secondary);
+    }
   }, []);
 
-  // Load user and their agency
-  const loadCurrentUser = async () => {
-    try {
-      setIsLoading(true);
-      
-      // Simulate loading from localStorage or API
-      const storedUserId = localStorage.getItem('currentUserId');
-      
-      if (storedUserId) {
-        const loadedUser = mockUsers.find(u => u.id === storedUserId);
-        
-        if (loadedUser) {
-          setUser(loadedUser);
-          
-          // Load agency (skip for platform admin)
-          if (loadedUser.agency_id !== 'platform') {
-            const loadedAgency = getAgencyById(loadedUser.agency_id);
-            if (loadedAgency) {
-              setAgency(loadedAgency);
-              
-              // Apply agency theme colors
-              applyTheme(loadedAgency);
-            }
-          }
-        }
+  const setAuthUser = useCallback(
+    (newUser: User | null) => {
+      setUser(newUser);
+      if (newUser && newUser.role !== UserRole.PLATFORM_ADMIN) {
+        const userAgency = agencies.find((a) => a.id === newUser.agency_id) ?? null;
+        setAgency(userAgency);
+        applyAgencyTheme(userAgency);
       } else {
-        // Default to mock current user for development
-        setUser(mockCurrentUser);
-        const defaultAgency = getAgencyById(mockCurrentUser.agency_id);
-        if (defaultAgency) {
-          setAgency(defaultAgency);
-          applyTheme(defaultAgency);
-        }
-        localStorage.setItem('currentUserId', mockCurrentUser.id);
+        setAgency(null);
       }
-    } catch (error) {
-      console.error('Failed to load user:', error);
-    } finally {
+    },
+    [applyAgencyTheme]
+  );
+
+  // Restore session on mount
+  useEffect(() => {
+    getCurrentUser().then((res) => {
+      if (res.success && res.user) {
+        setAuthUser(res.user);
+      }
       setIsLoading(false);
-    }
-  };
+    });
+  }, [setAuthUser]);
 
-  // Apply agency theme colors to CSS variables
-  const applyTheme = (agency: Agency) => {
-    const root = document.documentElement;
-    
-    // Convert hex to HSL and apply
-    const primary = hexToHSL(agency.theme_colors.primary);
-    const secondary = hexToHSL(agency.theme_colors.secondary);
-    
-    if (primary) {
-      root.style.setProperty('--primary', `${primary.h} ${primary.s}% ${primary.l}%`);
-    }
-    
-    if (secondary) {
-      root.style.setProperty('--secondary', `${secondary.h} ${secondary.s}% ${secondary.l}%`);
-    }
-  };
+  const login = useCallback(
+    async (email: string, password: string, remember = false) => {
+      const res = await loginWithEmail(email, password, remember);
+      if (res.success && res.user) setAuthUser(res.user);
+      return res;
+    },
+    [setAuthUser]
+  );
 
-  // Login function
-  const login = async (email: string, password: string) => {
-    try {
-      setIsLoading(true);
-      
-      // Mock authentication - find user by email
-      const foundUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-      
-      if (!foundUser) {
-        throw new Error('Invalid email or password');
+  const socialLogin = useCallback(
+    async (provider: "google" | "apple") => {
+      const res = await loginWithSocial(provider);
+      if (res.success && res.user) setAuthUser(res.user);
+      return res;
+    },
+    [setAuthUser]
+  );
+
+  const signup = useCallback(
+    async (data: {
+      name: string;
+      email: string;
+      password: string;
+      agency_name: string;
+      agency_type: "individual" | "company";
+      team_size: string;
+      subscription_tier: SubscriptionTier;
+    }) => {
+      const res = await signupWithEmail(data);
+      if (res.success && res.user) {
+        setAuthUser(res.user);
+        if (res.agency) setAgency(res.agency);
       }
-      
-      // In real app, verify password here
-      // For now, accept any password
-      
-      setUser(foundUser);
-      
-      // Load agency
-      if (foundUser.agency_id !== 'platform') {
-        const userAgency = getAgencyById(foundUser.agency_id);
-        if (userAgency) {
-          setAgency(userAgency);
-          applyTheme(userAgency);
-        }
-      }
-      
-      // Store in localStorage
-      localStorage.setItem('currentUserId', foundUser.id);
-      
-      // Update last login
-      foundUser.last_login = new Date().toISOString();
-    } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      return res;
+    },
+    [setAuthUser]
+  );
 
-  // Logout function
-  const logout = () => {
+  const socialSignup = useCallback(
+    async (provider: "google" | "apple") => {
+      return await signupWithSocial(provider);
+    },
+    []
+  );
+
+  const acceptInvite = useCallback(
+    async (data: { token: string; name: string; password: string }) => {
+      const res = await acceptInvitation(data);
+      if (res.success && res.user) setAuthUser(res.user);
+      return res;
+    },
+    [setAuthUser]
+  );
+
+  const logout = useCallback(async () => {
+    await apiLogout();
     setUser(null);
     setAgency(null);
-    localStorage.removeItem('currentUserId');
-    
-    // Reset theme to default
-    const root = document.documentElement;
-    root.style.removeProperty('--primary');
-    root.style.removeProperty('--secondary');
-  };
+  }, []);
 
-  // Permission check wrapper
-  const checkPermission = (permission: Permission): boolean => {
-    return hasPermission(user, permission);
-  };
+  const hasPermission = useCallback(
+    (permission: Permission) => {
+      if (!user) return false;
+      return rolePermissions[user.role]?.includes(permission) ?? false;
+    },
+    [user]
+  );
 
-  // Project access wrapper
-  const checkProjectAccess = (project: { agency_id: string; collaborators?: string[] }): boolean => {
-    return canAccessProject(user, project);
-  };
+  const isPlatformAdmin = useCallback(
+    () => user?.role === UserRole.PLATFORM_ADMIN,
+    [user]
+  );
 
-  // Project edit wrapper
-  const checkProjectEdit = (project: { agency_id: string; collaborators?: string[] }): boolean => {
-    return canEditProject(user, project);
-  };
+  const isAdmin = useCallback(
+    () =>
+      user?.role === UserRole.PLATFORM_ADMIN ||
+      user?.role === UserRole.AGENCY_ADMIN,
+    [user]
+  );
 
-  // Budget access wrapper
-  const checkBudgetAccess = (budget: { agency_id: string; collaborators?: string[] }): boolean => {
-    return canAccessBudget(user, budget);
-  };
+  const getRedirect = useCallback(
+    () => (user ? getRedirectPath(user) : "/login"),
+    [user]
+  );
 
-  // Budget edit wrapper
-  const checkBudgetEdit = (budget: { agency_id: string; collaborators?: string[] }): boolean => {
-    return canEditBudget(user, budget);
-  };
-
-  // Admin check wrapper
-  const checkIsAdmin = (): boolean => {
-    return isAdmin(user);
-  };
-
-  // Platform admin check wrapper
-  const checkIsPlatformAdmin = (): boolean => {
-    return isPlatformAdmin(user);
-  };
-
-  const value: AuthContextType = {
-    user,
-    agency,
-    isLoading,
-    userRole: user?.role || null,
-    currentUser: user,
-    login,
-    logout,
-    hasPermission: checkPermission,
-    canAccessProject: checkProjectAccess,
-    canEditProject: checkProjectEdit,
-    canAccessBudget: checkBudgetAccess,
-    canEditBudget: checkBudgetEdit,
-    isAdmin: checkIsAdmin,
-    isPlatformAdmin: checkIsPlatformAdmin,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        agency,
+        isLoading,
+        login,
+        socialLogin,
+        signup,
+        socialSignup,
+        acceptInvite,
+        logout,
+        hasPermission,
+        isPlatformAdmin,
+        isAdmin,
+        getRedirect,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
-// Hook to use auth context
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-}
-
-// Helper: Convert hex color to HSL
-function hexToHSL(hex: string): { h: number; s: number; l: number } | null {
-  // Remove # if present
-  hex = hex.replace('#', '');
-  
-  // Convert to RGB
-  const r = parseInt(hex.substring(0, 2), 16) / 255;
-  const g = parseInt(hex.substring(2, 4), 16) / 255;
-  const b = parseInt(hex.substring(4, 6), 16) / 255;
-  
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h = 0;
-  let s = 0;
-  const l = (max + min) / 2;
-  
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    
-    switch (max) {
-      case r:
-        h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-        break;
-      case g:
-        h = ((b - r) / d + 2) / 6;
-        break;
-      case b:
-        h = ((r - g) / d + 4) / 6;
-        break;
-    }
-  }
-  
-  return {
-    h: Math.round(h * 360),
-    s: Math.round(s * 100),
-    l: Math.round(l * 100),
-  };
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
 }

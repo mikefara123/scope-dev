@@ -3,24 +3,6 @@
 
 @import 'tw-animate-css';
 
-/* ========================================
- * TAILWIND THEME INTEGRATION
- * ========================================
- * Placed directly alongside @import 'tailwindcss' so that
- * Tailwind reliably generates utility classes (text-primary,
- * bg-secondary, border-destructive/20, etc.).
- *
- * Values here MUST match the :root variables in theme.css.
- * Hardcoded hex values are used (not var() references) so
- * that Tailwind can compute opacity modifiers at build time
- * (e.g. bg-primary/10 → rgba(26, 54, 93, 0.1)).
- *
- * PREVIOUSLY these were in theme.css in a separate @theme
- * inline block, plus ~150 lines of manual .bg-primary,
- * .text-primary, etc. redefinitions that conflicted with
- * Tailwind's auto-generated utilities.
- * ======================================== */
-
 @theme inline {
   /* Surface colors */
   --color-background: #f1f5f9;
@@ -56,7 +38,7 @@
   --color-info-light: #dbeafe;
   --color-info-dark: #2563eb;
 
-  /* Borders */
+  /* Borders & Inputs */
   --color-border: #e2e8f0;
   --color-input: transparent;
   --color-input-background: #ffffff;
