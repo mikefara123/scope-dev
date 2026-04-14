@@ -77,12 +77,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Restore session on mount
   useEffect(() => {
-    getCurrentUser().then((res) => {
-      if (res.success && res.user) {
-        setAuthUser(res.user);
-      }
-      setIsLoading(false);
-    });
+    getCurrentUser()
+      .then((res) => {
+        if (res.success && res.user) {
+          setAuthUser(res.user);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
   }, [setAuthUser]);
 
   const login = useCallback(
@@ -143,6 +145,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiLogout();
     setUser(null);
     setAgency(null);
+    // Reset theme colors to defaults
+    document.documentElement.style.removeProperty("--brand-primary");
+    document.documentElement.style.removeProperty("--brand-secondary");
   }, []);
 
   const hasPermission = useCallback(

@@ -1,5 +1,6 @@
 import { Navigate } from "react-router";
 import { useAuth } from "@/contexts/AuthContext";
+import { Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 
 export function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -8,7 +9,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-muted-foreground">Loading...</div>
+        <Loader2 className="h-6 w-6 animate-spin text-secondary" />
       </div>
     );
   }

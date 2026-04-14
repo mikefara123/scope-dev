@@ -8,6 +8,10 @@ import { Signup } from "@/app/pages/Signup";
 import { AcceptInvite } from "@/app/pages/AcceptInvite";
 import { ResetPassword } from "@/app/pages/ResetPassword";
 import { Dashboard } from "@/app/pages/Dashboard";
+import { Profile } from "@/app/pages/Profile";
+import { Settings } from "@/app/pages/Settings";
+import { Projects } from "@/app/pages/Projects";
+import { CreateProject } from "@/app/pages/CreateProject";
 
 export function App() {
   return (
@@ -31,6 +35,10 @@ export function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="admin" element={<Dashboard />} />
+            <Route path="profile" element={<Profile />} />
+            <Route path="settings" element={<Settings />} />
+            <Route path="projects" element={<Projects />} />
+            <Route path="projects/new" element={<CreateProject />} />
           </Route>
 
           {/* Catch-all */}

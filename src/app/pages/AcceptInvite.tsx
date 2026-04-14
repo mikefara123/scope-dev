@@ -139,7 +139,7 @@ export function AcceptInvite() {
             <div>
               <p className="text-sm font-medium text-foreground">{invite.agency_name}</p>
               <p className="text-xs text-muted-foreground">
-                You'll join as a {invite.role === "general_user" ? "Designer" : "Viewer"}
+                You'll join as a {invite.role === "general_user" ? "Designer" : invite.role === "agency_admin" ? "Admin" : "Viewer"}
               </p>
             </div>
           </div>

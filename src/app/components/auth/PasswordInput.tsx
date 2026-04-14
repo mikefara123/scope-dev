@@ -63,6 +63,7 @@ export function PasswordInput({
         <button
           type="button"
           onClick={() => setShow(!show)}
+          aria-label={show ? "Hide password" : "Show password"}
           className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground/60 transition-colors hover:text-foreground"
           tabIndex={-1}
         >

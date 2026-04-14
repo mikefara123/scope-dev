@@ -126,6 +126,7 @@ export function RootLayout() {
           {/* Collapse toggle */}
           <button
             onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
           >
             {collapsed ? (
@@ -136,14 +137,17 @@ export function RootLayout() {
             {!collapsed && <span>Collapse</span>}
           </button>
 
-          {/* User info */}
+          {/* User info — clickable to profile */}
           {!collapsed && (
-            <div className="rounded-lg bg-sidebar-accent/30 px-3 py-2">
+            <NavLink
+              to="/profile"
+              className="block rounded-lg bg-sidebar-accent/30 px-3 py-2 transition-colors hover:bg-sidebar-accent/50"
+            >
               <div className="truncate text-sm font-medium">{user.name}</div>
               <div className="truncate text-xs text-sidebar-foreground/60">
                 {agency?.name ?? "Platform Admin"}
               </div>
-            </div>
+            </NavLink>
           )}
 
           {/* Logout */}
@@ -176,11 +180,8 @@ export function RootLayout() {
                 Platform Admin
               </span>
             )}
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
-              {user.name
-                .split(" ")
-                .map((n) => n[0])
-                .join("")}
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground" aria-label={user.name}>
+              {user.name.split(" ").filter(Boolean).map((n) => n[0]).join("").slice(0, 2)}
             </div>
           </div>
         </header>
