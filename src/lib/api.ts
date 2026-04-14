@@ -5,7 +5,7 @@
  */
 
 import { users, agencies, projects, budgets, activities } from "@/data/mock";
-import type { User, Agency, Project, Budget, Activity, QualityLevel, Contact, Room, Phase } from "@/types";
+import type { User, Agency, Project, Budget, Activity, QualityLevel, Contact, Room, Phase, ProjectStatus } from "@/types";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -268,49 +268,142 @@ export interface DashboardData {
   totalBudgetValue: number;
   approvedValue: number;
   projectsByStatus: { name: string; value: number }[];
+  budgetTrend: { month: string; value: number }[];
   recentActivities: Activity[];
   deadlines: { label: string; project: string; daysUntil: number }[];
+  projectsList: { id: string; name: string; client: string; status: string; budget: number; updatedAt: string }[];
 }
 
 /**
- * Fetch aggregated dashboard data.
+ * Fetch aggregated dashboard data — all computed from real data.
  * GET /api/dashboard?agency_id=xxx
  */
 export async function getDashboardData(agencyId?: string): Promise<ApiResponse<DashboardData>> {
   await delay(300 + Math.random() * 200);
 
+  // Scope data by agency
   const agencyProjects = agencyId
     ? projects.filter((p) => p.agency_id === agencyId)
     : projects;
 
-  const agencyBudgets = budgets.filter((b) =>
-    agencyProjects.some((p) => p.id === b.projectId)
-  );
+  const projectIds = new Set(agencyProjects.map((p) => p.id));
 
+  const agencyBudgets = budgets.filter((b) => projectIds.has(b.projectId));
+
+  const agencyUsers = agencyId
+    ? users.filter((u) => u.agency_id === agencyId)
+    : users;
+  const agencyUserIds = new Set(agencyUsers.map((u) => u.id));
+
+  // Stats — computed from real data
   const active = agencyProjects.filter((p) => p.status === "active").length;
   const onHold = agencyProjects.filter((p) => p.status === "on_hold").length;
   const completed = agencyProjects.filter((p) => p.status === "completed").length;
+  const totalBudgetValue = agencyProjects.reduce((sum, p) => sum + p.totalBudgeted, 0);
+  const approvedValue = agencyProjects.reduce((sum, p) => sum + p.approvedAmount, 0);
+
+  // Budget trend — derived from real budget creation dates
+  const now = new Date();
+  const trendMonths: { month: string; value: number }[] = [];
+  for (let i = 7; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthLabel = d.toLocaleDateString("en-US", { month: "short" });
+    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+
+    // Sum grandTotal of budgets created up to this month
+    const cumulativeTotal = agencyBudgets
+      .filter((b) => new Date(b.createdAt) <= monthEnd)
+      .reduce((sum, b) => sum + b.grandTotal, 0);
+
+    trendMonths.push({ month: monthLabel, value: Math.round(cumulativeTotal / 1000) });
+  }
+
+  // Activities — filtered by agency users
+  const agencyActivities = activities
+    .filter((a) => agencyUserIds.has(a.userId))
+    .slice(0, 5);
+
+  // Deadlines — derived from real pending budgets and active projects
+  const deadlineItems: { label: string; project: string; daysUntil: number }[] = [];
+
+  // Pending approval budgets → deadline
+  for (const b of agencyBudgets.filter((b) => b.status === "pending_approval")) {
+    const proj = agencyProjects.find((p) => p.id === b.projectId);
+    if (proj && b.sentAt) {
+      const sent = new Date(b.sentAt);
+      // Assume 7-day approval window from sent date
+      const due = new Date(sent.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const daysUntil = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      deadlineItems.push({
+        label: `Budget approval: ${b.name}`,
+        project: proj.projectName,
+        daysUntil,
+      });
+    }
+  }
+
+  // Draft budgets → reminder to submit
+  for (const b of agencyBudgets.filter((b) => b.status === "draft")) {
+    const proj = agencyProjects.find((p) => p.id === b.projectId);
+    if (proj) {
+      const updated = new Date(b.updatedAt);
+      const staleDays = Math.floor((now.getTime() - updated.getTime()) / (1000 * 60 * 60 * 24));
+      if (staleDays > 3) {
+        deadlineItems.push({
+          label: `Draft pending: ${b.name}`,
+          project: proj.projectName,
+          daysUntil: -staleDays + 7, // nudge after 7 days
+        });
+      }
+    }
+  }
+
+  // Active projects with no budgets → reminder
+  for (const p of agencyProjects.filter((p) => p.status === "active")) {
+    const hasBudget = agencyBudgets.some((b) => b.projectId === p.id);
+    if (!hasBudget) {
+      const created = new Date(p.createdAt);
+      const daysSince = Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+      deadlineItems.push({
+        label: "Create first budget",
+        project: p.projectName,
+        daysUntil: Math.max(0, 14 - daysSince), // 14-day nudge
+      });
+    }
+  }
+
+  // Sort deadlines: most urgent first
+  deadlineItems.sort((a, b) => a.daysUntil - b.daysUntil);
+
+  // Projects list for sidebar widget
+  const projectsList = agencyProjects
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+    .slice(0, 5)
+    .map((p) => ({
+      id: p.id,
+      name: p.projectName,
+      client: p.clientName,
+      status: p.status,
+      budget: p.totalBudgeted,
+      updatedAt: p.updatedAt,
+    }));
 
   return {
     success: true,
     data: {
       activeProjects: active,
       pendingApprovals: agencyBudgets.filter((b) => b.status === "pending_approval").length,
-      totalBudgetValue: agencyProjects.reduce((sum, p) => sum + p.totalBudgeted, 0),
-      approvedValue: agencyProjects.reduce((sum, p) => sum + p.approvedAmount, 0),
+      totalBudgetValue,
+      approvedValue,
       projectsByStatus: [
         { name: "Active", value: active },
         { name: "On Hold", value: onHold },
         { name: "Completed", value: completed },
       ].filter((d) => d.value > 0),
-      recentActivities: activities.slice(0, 5),
-      deadlines: [
-        { label: "Budget approval due", project: "Beverly Hills Residence", daysUntil: -1 },
-        { label: "Phase 1 delivery", project: "Downtown Office Redesign", daysUntil: 2 },
-        { label: "Client review meeting", project: "Beverly Hills Residence", daysUntil: 5 },
-        { label: "Final walkthrough", project: "Malibu Beach House", daysUntil: 8 },
-        { label: "Vendor quotes deadline", project: "Downtown Office Redesign", daysUntil: 12 },
-      ],
+      budgetTrend: trendMonths,
+      recentActivities: agencyActivities,
+      deadlines: deadlineItems.slice(0, 5),
+      projectsList,
     },
   };
 }
